@@ -32,6 +32,7 @@ import subprocess
 from subprocess import Popen, PIPE
 import pprint
 import re
+import argparse
 
 # Marvin
 try:
@@ -78,12 +79,45 @@ class CloudStackOps(CloudStackOpsBase):
         self.pp = pprint.PrettyPrinter(depth=6)
         self.ssh = None
         self.xenserver = None
+        self.args = None
 
         self.printWelcome()
         self.checkScreen()
 
         signal.signal(signal.SIGINT, self.catch_ctrl_C)
+    # Function to handle our arguments
+    def add_generic_arguments(self, description="CloudstackOps"):
+        
+        self.parser = argparse.ArgumentParser(description=description)
+       
+        # use required instance to add required arguments
+        self.required = self.parser.add_argument_group('required arguments')
+        self.required.add_argument("-c", "--configprofile", help="Specify the CloudMonkey profile name to get the credentials from (or specify in ./config file)", required=True)
+        
+        # use parser instance to add some optional yet generic arguments
+        self.parser.add_argument("-d", "--debug", help="Enable debug mode", action="store_true")
+        self.parser.add_argument("-n", "--dryrun", help="Dry run mode", action="store_true")
+        self.parser.add_argument("-f", "--force", help="Force mode", action="store_true")
+    
+        return (self.parser, self.required)
 
+    def parse_arguments(self, parser):
+        
+        # parse ArgumentParser object
+        self.args = self.parser.parse_args()
+                           
+        if self.args: 
+            print "---- Debug enabled: " + str(self.args.debug)
+            print "---- Force enabled: " + str(self.args.force)
+            print "---- Dryrun enabled: " + str(self.args.dryrun)
+            
+            # set class instance globals
+            self.DEBUG = int(self.args.debug)
+            self.FORCE = int(self.args.force)
+            self.DRYRUN = int(self.args.dryrun)
+        
+        return self.args
+        
     def printWelcome(self):
         print colored.green("Welcome to CloudStackOps")
 
@@ -1018,8 +1052,8 @@ class CloudStackOps(CloudStackOpsBase):
         
         # Call CloudStack API
         result = self._callAPI(apicall)    
-       
-        if result is not None:
+
+        if result is not None and type(result) is list:
             return result[0].id
         else:
             return None
