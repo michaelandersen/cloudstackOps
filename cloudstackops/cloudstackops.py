@@ -40,7 +40,8 @@ try:
     from marvin.cloudstackException import cloudstackAPIException
     from marvin.cloudstackAPI import *
     from marvin import cloudstackAPI
-except:
+except Exception as err:
+    print err
     print "Error: Please install Marvin to talk to the CloudStack API:"
     print "       pip install ./marvin/Marvin-0.1.0.tar.gz (file is in this repository)"
     sys.exit(1)
@@ -86,38 +87,43 @@ class CloudStackOps(CloudStackOpsBase):
 
         signal.signal(signal.SIGINT, self.catch_ctrl_C)
     # Function to handle our arguments
+
     def add_generic_arguments(self, description="CloudstackOps"):
-        
+
         self.parser = argparse.ArgumentParser(description=description)
-       
+
         # use required instance to add required arguments
         self.required = self.parser.add_argument_group('required arguments')
-        self.required.add_argument("-c", "--configprofile", help="Specify the CloudMonkey profile name to get the credentials from (or specify in ./config file)", required=True)
-        
+        self.required.add_argument(
+            "-c", "--configprofile", help="Specify the CloudMonkey profile name to get the credentials from (or specify in ./config file)", required=True)
+
         # use parser instance to add some optional yet generic arguments
-        self.parser.add_argument("-d", "--debug", help="Enable debug mode", action="store_true")
-        self.parser.add_argument("-n", "--dryrun", help="Dry run mode", action="store_true")
-        self.parser.add_argument("-f", "--force", help="Force mode", action="store_true")
-    
+        self.parser.add_argument(
+            "-d", "--debug", help="Enable debug mode", action="store_true")
+        self.parser.add_argument(
+            "-n", "--dryrun", help="Dry run mode", action="store_true")
+        self.parser.add_argument(
+            "-f", "--force", help="Force mode", action="store_true")
+
         return (self.parser, self.required)
 
     def parse_arguments(self, parser):
-        
+
         # parse ArgumentParser object
         self.args = self.parser.parse_args()
-                           
-        if self.args: 
+
+        if self.args:
             print "---- Debug enabled: " + str(self.args.debug)
             print "---- Force enabled: " + str(self.args.force)
             print "---- Dryrun enabled: " + str(self.args.dryrun)
-            
+
             # set class instance globals
             self.DEBUG = int(self.args.debug)
             self.FORCE = int(self.args.force)
             self.DRYRUN = int(self.args.dryrun)
-        
+
         return self.args
-        
+
     def printWelcome(self):
         print colored.green("Welcome to CloudStackOps")
 
@@ -149,7 +155,7 @@ class CloudStackOps(CloudStackOpsBase):
             tryLocal = True
 
         if self.configProfileName == "config":
-           tryLocal = True
+            tryLocal = True
 
         if tryLocal:
             # Read config for CloudStack API credentials
@@ -407,7 +413,7 @@ class CloudStackOps(CloudStackOpsBase):
             print "DEBUG: Selected storage pool: " + targetStorageID + " (" + toStorageData.name + ")" + " for cluster " + clusterID
 
         return targetStorageID
-    
+
     # Find storagePool for Cluster
     def getStoragePool(self, clusterID):
         apicall = listStoragePools.listStoragePoolsCmd()
@@ -419,7 +425,7 @@ class CloudStackOps(CloudStackOpsBase):
         # Select a random storage pool that belongs to this cluster
 
         return data
-    
+
     # Get storagePool data
     def getStoragePoolData(self, storagepoolID):
         apicall = listStoragePools.listStoragePoolsCmd()
@@ -533,6 +539,14 @@ class CloudStackOps(CloudStackOpsBase):
 
         # Return the redundant routers
         return redRouters
+
+    def getVolumesOnFiler(self, storagepool):
+        apicall = listVolumesOnFiler.listVolumesOnFilerCmd()
+        apicall.poolname = storagepool
+        apicall.listAll = "true"
+
+        # Call CloudStack API
+        return self._callAPI(apicall)
 
     # Get systemvm data
     def getSystemVmData(self, args):
@@ -1046,36 +1060,36 @@ class CloudStackOps(CloudStackOpsBase):
         return targetStoragePoolData[0].tags
 
     def getZoneId(self, zonename):
-        
+
         apicall = listZones.listZonesCmd()
         apicall.name = zonename
-        
+
         # Call CloudStack API
-        result = self._callAPI(apicall)    
+        result = self._callAPI(apicall)
 
         if result is not None and type(result) is list:
             return result[0].id
         else:
             return None
-        
+
     def getDetachedVolumes(self, storagepoolid):
-  
-        volumes = self.listVolumes(storagepoolid,False)
-              
-        orphans = []   
-        
+
+        volumes = self.listVolumes(storagepoolid, False)
+
+        orphans = []
+
         if volumes is not None:
             # sort results by domain
             volumes.sort(key=lambda vol: vol.domain, reverse=True)
-        
+
             # select volumes with no vmname attached
             for volume in volumes:
                 if volume.vmname is None:
                     orphans.append(volume)
-            
-        #return selected detached volumes
-        return orphans      
-        
+
+        # return selected detached volumes
+        return orphans
+
     # Check zone
     def checkZone(self, routerClusterID, toClusterID):
         routerClusterData = self.listClusters({'clusterid': routerClusterID})
@@ -1458,7 +1472,6 @@ class CloudStackOps(CloudStackOpsBase):
                 clusterHostsData[0])
         except:
             xenserver_patch_level = "N/A"
-
 
         for cluster in clusterData:
             t.add_row([cluster.name,

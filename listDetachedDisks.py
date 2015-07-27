@@ -33,7 +33,7 @@ from cloudstackops import cloudstackops
 from cloudstackops import cloudstackopsssh
 from cloudstackops.cloudstackstorage import StorageHelper
 
-from prettytable import PrettyTable 
+from prettytable import PrettyTable
 
 __version__ = "0.2"
 
@@ -48,15 +48,18 @@ def get_volume_filesize(file_uuid_in_cloudstack, *filelist):
             size = int(filelist[filepath])
     return size
 
-# per script custom arguments 
+# per script custom arguments
+
+
 def add_custom_arguments(parser, required):
-    # 'required' and 'parser' must be argparse ArgumentParser objects 
-     
+    # 'required' and 'parser' must be argparse ArgumentParser objects
+
     required.add_argument("-z", "--zone", help="Zone Name", required=True)
-     
+
     parser.add_argument("-t", "--cluster", help="Cluster Name")
-    parser.add_argument("-V", "--version", action='version', version="%(prog)s (version " + __version__ + ")")
-    
+    parser.add_argument("-V", "--version", action='version',
+                        version="%(prog)s (version " + __version__ + ")")
+
     # return parser object so we can parse_args()
     return parser
 
@@ -65,30 +68,29 @@ def add_custom_arguments(parser, required):
 
 # Parse arguments
 if __name__ == "__main__":
-    
+
     description = "List Detached disks based on Volume Cloudstack api vs Storaaepools"
-    
+
     # Init our classes
     c = cloudstackops.CloudStackOps()
     cs = cloudstackopsssh.CloudStackOpsSSH()
-    
 
     parser, required = c.add_generic_arguments(description)
     try:
         parser = add_custom_arguments(parser, required)
-    
+
     except Exception:
         pass
-    
+
     finally:
         args = c.parse_arguments(parser)
 
     # assign custom options to globals
     zone = args.zone
-    
+
     if args.cluster:
         clusterarg = args.cluster
-        
+
     c.configProfileName = args.configprofile
 
 
@@ -132,7 +134,7 @@ for cluster in clusters:
     storagepools = []
     storagepools.append(c.getStoragePool(cluster.id))
     random_hypervisor = random.choice(c.getHostsFromCluster(cluster.id))
-    
+
     # flatten storagepool list
     storagepools = [y for x in storagepools for y in x]
 
@@ -171,7 +173,8 @@ for cluster in clusters:
             for detached_disk in detached_disks:
                 diskfound = ''
 
-                disk_allocated_sizeGB = (detached_disk.size / math.pow(1024, 3))
+                disk_allocated_sizeGB = (
+                    detached_disk.size / math.pow(1024, 3))
 
                 if storagepool_filelist is None:
                     disk_real_sizeGB = 'n/a'
