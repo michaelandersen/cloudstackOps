@@ -31,24 +31,11 @@ import argparse
 
 from cloudstackops import cloudstackops
 from cloudstackops import cloudstackopsssh
-from cloudstackops.cloudstackstorage import StorageHelper
+from cloudstackops.cloudstackstorage import RemoteStorageHelper
 
 from prettytable import PrettyTable
 
 __version__ = "0.2"
-
-
-def get_volume_filesize(file_uuid_in_cloudstack, *filelist):
-    filelist, = filelist
-    size = None
-    for filepath in filelist.keys():
-        file_uuid_on_storagepool = filepath.split('/')[-1].split('.')[:1][0]
-
-        if file_uuid_in_cloudstack == file_uuid_on_storagepool:
-            size = int(filelist[filepath])
-    return size
-
-# per script custom arguments
 
 
 def add_custom_arguments(parser, required):
@@ -63,13 +50,12 @@ def add_custom_arguments(parser, required):
     # return parser object so we can parse_args()
     return parser
 
-
 ## MAIN ##
 
 # Parse arguments
 if __name__ == "__main__":
 
-    description = "List Detached disks based on Volume Cloudstack api vs Storaaepools"
+    description = "List Detached disks based on Volume Cloudstack API vs Storaaepools"
 
     # Init our classes
     c = cloudstackops.CloudStackOps()
@@ -128,7 +114,7 @@ if clusters is None:
 
 # get a list of storage pools for each cluster
 t_storagepool = PrettyTable(
-    ["Cluster", "Storage Pool", "Number of detached disks", "Real Space used (GB)"])
+    ["Cluster", "Storage Pool", "Number of detached disks", "Real Space used (MB)"])
 
 for cluster in clusters:
     storagepools = []
@@ -141,22 +127,31 @@ for cluster in clusters:
     # # if there are storage pools (should be)
     if len(storagepools) > 0:
 
-        storagehelper = StorageHelper(debug=c.DEBUG)
+        storagehelper = RemoteStorageHelper(debug=c.DEBUG)
 
         for storagepool in storagepools:
-            used_space = 0
+            used_space_mb = 0
 
-            # Get list of detached_disks from cloudstack for storagepool
-            print "[INFO]: Retrieving list of detached disks for storage pool", storagepool.name
-            detached_disks = c.getDetachedVolumes(storagepool.id)
+            try:
+                # Get list of detached_disks from cloudstack for storagepool
+                print "[INFO]: Retrieving list of detached disks for storage pool", storagepool.name
+                detached_disks = c.getDetachedVolumes(storagepool.id)
+
+            except Exception as err:
+                print "ERROR: Error retrieving volume list from Cloudstack"
+                print str(err)
 
             storagepool_devicepath = storagepool.ipaddress + \
                 ":" + str(storagepool.path)
 
             # get filelist for storagepool via a 'random' hypervisor from
             # cluster
-            primary_mountpoint = storagehelper.get_mountpoint(
-                random_hypervisor.ipaddress, storagepool_devicepath)
+            try:
+                primary_mountpoint = storagehelper.get_mountpoint(
+                    random_hypervisor.ipaddress, storagepool_devicepath)
+
+            except Exception as err:
+                print "ERROR: error retrieving mount list from host: " + random_hypervisor.name + " ip: " + random_hypervisor.ipaddress
 
             if primary_mountpoint is None:
                 if c.DEBUG == 1:
@@ -164,44 +159,49 @@ for cluster in clusters:
                 storagepool_filelist = None
 
             else:
-                storagepool_filelist = storagehelper.list_files(
-                    random_hypervisor.ipaddress, primary_mountpoint)
+
+                try:
+                    storagepool_filelist = storagehelper.list_files(
+                        random_hypervisor.ipaddress, primary_mountpoint)
+
+                except Exception as err:
+                    print "ERROR: error retrieving file list from host: " + random_hypervisor.name + " ip: " + random_hypervisor.ipaddress
 
             t = PrettyTable(["Domain", "Account", "Name", "Cluster", "Storagepool", "Path",
-                             "Allocated Size (GB)", "Real Size (GB)", "Disk Found"])
+                             "Allocated Size (GB)", "Real Size (MB)", "Modified Time", "Disk Found"])
 
-            for detached_disk in detached_disks:
-                diskfound = ''
+            # Match each detached disk on the storagepool filesystem and print
+            # results
+            for cloudstack_detached_disk in detached_disks:
+                diskfound = None
+                cloudstack_allocated_size_mb = (
+                    cloudstack_detached_disk.size / math.pow(1024, 2))
+                cloudstack_disk_uuid = cloudstack_detached_disk.path
 
-                disk_allocated_sizeGB = (
-                    detached_disk.size / math.pow(1024, 3))
+                for storage_file_path, storage_file_info in storagepool_filelist.iteritems():
 
-                if storagepool_filelist is None:
-                    disk_real_sizeGB = 'n/a'
-                    diskfound = '?'
-
-                else:
-                    disk_real_sizeGB = get_volume_filesize(
-                        detached_disk.path, storagepool_filelist)
-
-                    if disk_real_sizeGB is not None:
-                        used_space += (disk_real_sizeGB / 1024)
-                        disk_real_sizeGB = format(
-                            (disk_real_sizeGB / 1024), '.2f')
+                    if storage_file_info['name'] == cloudstack_disk_uuid:
                         diskfound = 'Y'
 
-                    else:
-                        disk_real_sizeGB = 0
-                        diskfound = 'N'
+                        storage_file_size_mb = (
+                            int(storage_file_info['size_bytes']) / math.pow(1024, 2))
+                        storage_file_mtime = storage_file_info[
+                            'mdate'] + " " + storage_file_info['mtime']
 
-                # add a row with disk details
-                t.add_row([detached_disk.domain, detached_disk.account, detached_disk.name, cluster.name, storagepool.name, detached_disk.path,
-                           disk_allocated_sizeGB, disk_real_sizeGB, diskfound])
+                        used_space_mb += storage_file_size_mb
+
+                        t.add_row([cloudstack_detached_disk.domain, cloudstack_detached_disk.account, cloudstack_detached_disk.name, cluster.name, storagepool.name,
+                                   cloudstack_disk_uuid, (cloudstack_allocated_size_mb / math.pow(1024, 1)), storage_file_size_mb, storage_file_mtime, diskfound])
+
+                if diskfound is None:
+                    diskfound = 'N'
+                    t.add_row([cloudstack_detached_disk.domain, cloudstack_detached_disk.account, cloudstack_detached_disk.name, cluster.name, storagepool.name,
+                               cloudstack_disk_uuid, (cloudstack_allocated_size_mb / math.pow(1024, 1)), "n/a", "n/a", diskfound])
 
             # Print disk table
             print t.get_string()
             t_storagepool.add_row(
-                [cluster.name, storagepool.name, len(detached_disks), format(used_space, '.2f')])
+                [cluster.name, storagepool.name, len(detached_disks), used_space_mb])
 
 print "Storagepool Totals"
 print t_storagepool.get_string()
